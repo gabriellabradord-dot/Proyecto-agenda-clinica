@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEDICO
+  AUXILIAR
+  PACIENTE
+  RECEPCION
+  FARMACIA
+}
+
+enum AppointmentStatus {
+  PENDIENTE
+  EN_ATENCION
+  COMPLETADA
+  CANCELADA
+}
+
+enum PrescriptionStatus {
+  PENDIENTE
+  DESPACHADA
+  CANCELADA
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      Role
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile                Profile?
+  doctorAppointments     Appointment[]    @relation("DoctorAppointments")
+  patientAppointments    Appointment[]    @relation("PatientAppointments")
+  recordsAsDoctor        MedicalRecord[]  @relation("DoctorRecords")
+  recordsAsPatient       MedicalRecord[]  @relation("PatientRecords")
+  prescriptionsAsDoctor  Prescription[]   @relation("DoctorPrescriptions")
+  prescriptionsAsPatient Prescription[]   @relation("PatientPrescriptions")
+  vitalSignsTaken        Vitals[]
+  billsProcessed         Bill[]
+  dispensations          Dispensation[]
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  nombre    String
+  cedula    String   @unique
+  telefono  String?
+  direccion String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id         String            @id @default(uuid())
+  pacienteId String
+  medicoId   String
+  fecha      DateTime
+  hora       String
+  motivo     String?
+  estado     AppointmentStatus @default(PENDIENTE)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  paciente User @relation("PatientAppointments", fields: [pacienteId], references: [id])
+  medico   User @relation("DoctorAppointments", fields: [medicoId], references: [id])
+
+  vitals        Vitals?
+  medicalRecord MedicalRecord?
+  bill          Bill?
+
+  @@index([medicoId, fecha])
+  @@index([pacienteId, fecha])
+}
+
+model MedicalRecord {
+  id            String   @id @default(uuid())
+  pacienteId    String
+  medicoId      String
+  citaId        String?  @unique
+  diagnostico   String
+  tratamiento   String?
+  observaciones String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  paciente      User           @relation("PatientRecords", fields: [pacienteId], references: [id])
+  medico        User           @relation("DoctorRecords", fields: [medicoId], references: [id])
+  cita          Appointment?   @relation(fields: [citaId], references: [id])
+  prescriptions Prescription[]
+}
+
+model Vitals {
+  id                 String   @id @default(uuid())
+  citaId             String   @unique
+  auxiliarId         String
+  presion            String?
+  peso               Float?
+  talla              Float?
+  temperatura        Float?
+  frecuenciaCardiaca Int?
+  createdAt          DateTime @default(now())
+
+  cita     Appointment @relation(fields: [citaId], references: [id], onDelete: Cascade)
+  auxiliar User        @relation(fields: [auxiliarId], references: [id])
+}
+
+model Prescription {
+  id             String             @id @default(uuid())
+  medicoId       String
+  pacienteId     String
+  recordId       String?
+  medicamentos   Json
+  indicaciones   String?
+  estadoDespacho PrescriptionStatus @default(PENDIENTE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  medico        User           @relation("DoctorPrescriptions", fields: [medicoId], references: [id])
+  paciente      User           @relation("PatientPrescriptions", fields: [pacienteId], references: [id])
+  record        MedicalRecord? @relation(fields: [recordId], references: [id])
+  dispensations Dispensation[]
+}
+
+model Medicine {
+  id               String    @id @default(uuid())
+  nombre           String    @unique
+  descripcion      String?
+  stock            Int       @default(0)
+  stockMinimo      Int       @default(5)
+  fechaVencimiento DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  dispensations Dispensation[]
+}
+
+model Dispensation {
+  id             String   @id @default(uuid())
+  prescriptionId String
+  medicineId     String
+  cantidad       Int
+  farmaceuticoId String
+  createdAt      DateTime @default(now())
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+  medicine     Medicine     @relation(fields: [medicineId], references: [id])
+  farmaceutico User         @relation(fields: [farmaceuticoId], references: [id])
+}
+
+model Bill {
+  id          String   @id @default(uuid())
+  citaId      String   @unique
+  recepcionId String
+  monto       Float
+  metodoPago  String
+  comprobante String   @unique
+  createdAt   DateTime @default(now())
+
+  cita      Appointment @relation(fields: [citaId], references: [id])
+  recepcion User        @relation(fields: [recepcionId], references: [id])
+}
